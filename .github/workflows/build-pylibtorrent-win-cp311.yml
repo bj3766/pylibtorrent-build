@@ -1,8 +1,8 @@
-name: Build pylibtorrent Windows
+name: Build pylibtorrent Windows (Python 3.11)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   workflow_dispatch:
 
 env:
@@ -17,18 +17,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # ---------------------------------------
-    # vcpkg 설치 + mirror 적용
-    # ---------------------------------------
     - name: Install vcpkg
-      shell: pwsh
       run: |
-        git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
-        & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
-        echo "VCPKG_FORCE_SYSTEM_BINARIES=1" | Out-File -Append $env:GITHUB_ENV
-        echo "VCPKG_DOWNLOADS=https://ghproxy.com/" | Out-File -Append $env:GITHUB_ENV
+        git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+        C:\vcpkg\bootstrap-vcpkg.bat
 
-    - name: Cache vcpkg
+    - name: Setup vcpkg cache
       uses: actions/cache@v3
       with:
         path: |
@@ -36,31 +30,12 @@ jobs:
           C:\vcpkg\archives
         key: vcpkg-${{ runner.os }}-${{ env.TRIPLET }}
 
-    # ---------------------------------------
-    # Python 3.11 설치
-    # ---------------------------------------
-    - name: Setup Python 3.11
+    - name: Install Python 3.11
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
-    - name: Show Python Version
-      shell: pwsh
-      run: |
-        python --version
-        echo "PY=$(python -c 'import sys; print(sys.executable)')" | Out-File -Append $env:GITHUB_ENV
-
-    # ---------------------------------------
-    # libtorrent v2.0.9 다운로드
-    # ---------------------------------------
-    - name: Clone libtorrent v2.0.9
-      run: |
-        git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
-
-    # ---------------------------------------
-    # vcpkg dependencies (Boost, Boost.Python, OpenSSL, Zlib, libiconv)
-    # ---------------------------------------
-    - name: Install dependencies
+    - name: Install dependencies (Boost, OpenSSL, Zlib, Boost.Python)
       shell: pwsh
       run: |
         $packages = @(
@@ -72,7 +47,6 @@ jobs:
           "zlib",
           "libiconv"
         )
-
         for ($i=0; $i -lt 5; $i++) {
           & "$env:VCPKG_ROOT\vcpkg.exe" install $packages --triplet $env:TRIPLET
           if ($LASTEXITCODE -eq 0) { exit 0 }
@@ -82,30 +56,24 @@ jobs:
         Write-Error "vcpkg install failed after 5 attempts"
         exit 1
 
-    # ---------------------------------------
-    # CMake Configure + Build
-    # ---------------------------------------
-    - name: Configure libtorrent
-      shell: pwsh
+    - name: Clone libtorrent v2.0.9
       run: |
-        $toolchain = "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+        git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
+    - name: Configure libtorrent (Python 3.11)
+      run: |
+        $PY = (Get-Command python).Source
         cmake -B build -S libtorrent-src `
-          -G "Visual Studio 17 2022" `
           -A x64 `
-          -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
+          -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake `
           -DCMAKE_BUILD_TYPE=Release `
-          -DBUILD_SHARED_LIBS=ON `
-          -Dbuild_tests=OFF `
           -Dpython-bindings=ON `
-          -DPython3_EXECUTABLE="$env:PY"
+          -Dbuild_tests=OFF `
+          -DPYTHON_EXECUTABLE=$PY
 
     - name: Build libtorrent
       run: cmake --build build --config Release --parallel
 
-    # ---------------------------------------
-    # Artifact 업로드
-    # ---------------------------------------
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
