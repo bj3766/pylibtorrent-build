@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 120
 
     env:
-      VCPKG_ROOT: ${{ runner.temp }}\vcpkg
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
       TRIPLET: x64-windows
       PYTHON_VERSION: "3.11"
 
@@ -32,13 +32,13 @@ jobs:
 
       - name: Install vcpkg
         run: |
-          git clone https://github.com/microsoft/vcpkg ${{ env.VCPKG_ROOT }}
+          git clone https://github.com/microsoft/vcpkg $VCPKG_ROOT
           powershell -Command "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
 
       - name: Install dependencies via vcpkg
         run: |
           $v=$env:VCPKG_ROOT
-          & $v\vcpkg.exe install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
+          & "$v\vcpkg.exe" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
 
       - name: Clone libtorrent source
         run: |
@@ -49,14 +49,14 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -G "Ninja" ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}\scripts\buildsystems\vcpkg.cmake ^
-            -DVCPKG_TARGET_TRIPLET=${{ env.TRIPLET }} ^
-            -DBUILD_SHARED_LIBS=ON ^
-            -DBUILD_BINDINGS=ON ^
-            -DUSE_OPENSSL=ON ^
-            -DPYTHON_EXECUTABLE=C:\hostedtoolcache\windows\Python\3.11.*\x64\python.exe ^
+          cmake -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=$env:TRIPLET `
+            -DBUILD_SHARED_LIBS=ON `
+            -DBUILD_BINDINGS=ON `
+            -DUSE_OPENSSL=ON `
+            -DPYTHON_EXECUTABLE=C:\hostedtoolcache\windows\Python\3.11.*\x64\python.exe `
             ..
 
       - name: Build libtorrent
