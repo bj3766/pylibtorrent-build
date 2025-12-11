@@ -42,18 +42,18 @@ jobs:
             boost-filesystem ^
             boost-system ^
             boost-regex ^
+            boost-python ^
             openssl ^
             zlib ^
             libiconv ^
             pybind11 ^
-            boost-python3 ^
             --triplet %TRIPLET%
 
       - name: Clone libtorrent 2.0.10 stable
         run: |
           git clone --branch v2.0.10 https://github.com/arvidn/libtorrent.git libtorrent-src
 
-      - name: Configure CMake (disable try_signal, enable shared libs & bindings)
+      - name: Configure CMake
         working-directory: libtorrent-src
         shell: cmd
         run: |
