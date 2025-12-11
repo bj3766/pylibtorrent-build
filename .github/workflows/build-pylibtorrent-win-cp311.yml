@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-windows-cp311:
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 120
 
     env:
@@ -24,20 +24,22 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install tools
+      - name: Install build tools
         run: |
-          choco install -y ninja
-          pip install --upgrade pip setuptools wheel
+          pip install ninja cmake setuptools wheel
 
-      - name: Install vcpkg
+      - name: Clone vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
-          powershell -Command "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
 
-      - name: Install dependencies (Boost, OpenSSL, zlib)
+      - name: Bootstrap vcpkg
         run: |
-          $v=$env:VCPKG_ROOT
-          & "$v\vcpkg.exe" install `
+          $path="$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
+          & $path
+
+      - name: Install dependencies
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
             boost-filesystem `
             boost-system `
             boost-regex `
@@ -72,8 +74,7 @@ jobs:
 
       - name: Build Python wheel
         working-directory: libtorrent-src/bindings/python
-        run: |
-          python setup.py bdist_wheel
+        run: python setup.py bdist_wheel
 
       - name: Collect wheel artifact
         run: |
