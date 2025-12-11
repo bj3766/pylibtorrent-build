@@ -1,6 +1,9 @@
-name: Build pylibtorrent Windows
+name: Build pylibtorrent Windows (RC_2_0)
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
@@ -13,12 +16,11 @@ jobs:
     runs-on: windows-latest
 
     steps:
-
     - name: Checkout repository
       uses: actions/checkout@v4
 
     # ---------------------------
-    # Python 설치
+    # Setup Python
     # ---------------------------
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -26,14 +28,17 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     # ---------------------------
-    # vcpkg 설치
+    # Install vcpkg
     # ---------------------------
     - name: Install vcpkg
       run: |
         git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
         C:\vcpkg\bootstrap-vcpkg.bat
 
-    - name: Cache vcpkg
+    # ---------------------------
+    # Cache vcpkg
+    # ---------------------------
+    - name: Setup vcpkg cache
       uses: actions/cache@v3
       with:
         path: |
@@ -42,53 +47,72 @@ jobs:
         key: vcpkg-${{ runner.os }}-${{ env.TRIPLET }}
 
     # ---------------------------
-    # libtorrent 2.0.9 다운로드
+    # Clone libtorrent (RC_2_0, Python bindings 포함)
     # ---------------------------
-    - name: Clone libtorrent (v2.0.9)
+    - name: Clone RC_2_0 libtorrent
       run: |
-        git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
+        git clone --branch RC_2_0 https://github.com/arvidn/libtorrent.git libtorrent-src
 
     # ---------------------------
-    # vcpkg 패키지 설치 (5회 재시도)
+    # Install dependencies
     # ---------------------------
-    - name: Install dependencies
-      shell: powershell
+    - name: Install dependencies (Boost, OpenSSL, Zlib, libiconv)
+      shell: pwsh
       run: |
-        for ($i=0; $i -lt 5; $i++) {
-          & "$env:VCPKG_ROOT\vcpkg.exe" install openssl zlib boost-system boost-filesystem boost-regex libiconv --triplet $env:TRIPLET
+        for ($i = 0; $i -lt 5; $i++) {
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            boost-filesystem boost-system boost-regex `
+            openssl zlib libiconv `
+            --triplet $env:TRIPLET
+
           if ($LASTEXITCODE -eq 0) { exit 0 }
+
+          Write-Host "vcpkg failed, retry..."
           Start-Sleep -Seconds 5
         }
         exit 1
 
     # ---------------------------
-    # libtorrent CMake 설정
+    # Configure CMake
     # ---------------------------
-    - name: Configure libtorrent
+    - name: Configure libtorrent with Python bindings
       run: |
         cmake -B build -S libtorrent-src ^
+          -A x64 ^
           -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
           -DCMAKE_BUILD_TYPE=Release ^
-          -A x64 ^
-          -DBUILD_SHARED_LIBS=OFF
+          -DBUILD_SHARED_LIBS=ON ^
+          -Dpython-bindings=ON ^
+          -Dbuild_tests=OFF
 
+    # ---------------------------
+    # Build libtorrent + python bindings
+    # ---------------------------
     - name: Build libtorrent
       run: cmake --build build --config Release --parallel
 
     # ---------------------------
-    # Python bindings wheel 빌드
+    # Build Python wheel
     # ---------------------------
     - name: Build Python wheel
       working-directory: libtorrent-src/bindings/python
       run: |
-        python -m pip install setuptools wheel
+        python -m pip install -r requirements.txt
         python setup.py bdist_wheel
 
     # ---------------------------
-    # 결과물 아티팩트 업로드
+    # Collect artifacts
     # ---------------------------
-    - name: Upload wheel artifact
+    - name: Collect artifacts
+      run: |
+        mkdir artifacts
+        copy build\Release\*.dll artifacts\
+        copy build\Release\*.lib artifacts\
+
+        for /r %%f in (*.whl) do copy "%%f" artifacts\
+
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: pylibtorrent-wheel
-        path: libtorrent-src/bindings/python/dist/*.whl
+        name: pylibtorrent-windows
+        path: artifacts
