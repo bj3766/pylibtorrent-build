@@ -24,16 +24,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install build tools (CMake + Ninja)
+      - name: Install build tools
         run: |
           pip install cmake ninja setuptools wheel
-          echo "::add-path::$(python -c \"import site; import os; print(os.path.join(site.getsitepackages()[0],'ninja'))\")"
 
       - name: Clone vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
 
-      - name: Bootstrap vcpkg (PowerShell)
+      - name: Bootstrap vcpkg
         shell: powershell
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -48,7 +47,7 @@ jobs:
         run: |
           git clone --branch v2.0.10 https://github.com/arvidn/libtorrent.git libtorrent-src
 
-      - name: Configure with CMake (Ninja)
+      - name: Configure with CMake
         working-directory: libtorrent-src
         shell: powershell
         run: |
