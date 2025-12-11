@@ -1,3 +1,5 @@
+name: Build libtorrent Python wheel for Windows (CPython 3.11)
+
 on:
   push:
     branches: [ main ]
@@ -11,6 +13,7 @@ jobs:
     env:
       TRIPLET: x64-windows
       PYTHON_VERSION: "3.11"
+      VCPKG_ROOT: C:\vcpkg
 
     steps:
       - name: Checkout repository
@@ -21,32 +24,30 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Prepare vcpkg root path
-        id: prep
-        run: echo "VCPKG_ROOT=${{ runner.temp }}\vcpkg" >> $env:GITHUB_ENV
-
-      - name: Install core build tools (CMake, Ninja, wheel)
+      - name: Install CMake / Ninja / wheel
         run: |
           pip install --upgrade pip
           pip install cmake ninja setuptools wheel
 
       - name: Install vcpkg
+        shell: cmd
         run: |
-          git clone https://github.com/microsoft/vcpkg "$env:VCPKG_ROOT"
-          "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
+          git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
+          "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 
       - name: Install dependencies with vcpkg
+        shell: cmd
         run: |
-          "$env:VCPKG_ROOT\vcpkg.exe" install `
-            boost-filesystem `
-            boost-system `
-            boost-regex `
-            openssl `
-            zlib `
-            libiconv `
-            --triplet $env:TRIPLET
+          "%VCPKG_ROOT%\vcpkg.exe" install ^
+            boost-filesystem ^
+            boost-system ^
+            boost-regex ^
+            openssl ^
+            zlib ^
+            libiconv ^
+            --triplet %TRIPLET%
 
-      - name: Clone libtorrent source (v2.0.10)
+      - name: Clone libtorrent source (v2.0.10 stable)
         run: |
           git clone --branch v2.0.10 https://github.com/arvidn/libtorrent.git libtorrent-src
 
@@ -79,7 +80,8 @@ jobs:
           python -m pip install -r requirements.txt || true
           python setup.py bdist_wheel
 
-      - name: Collect wheel artifact
+      - name: Collect wheel artifacts
+        shell: cmd
         run: |
           mkdir artifacts
           for /r %%f in (*.whl) do copy "%%f" artifacts\
