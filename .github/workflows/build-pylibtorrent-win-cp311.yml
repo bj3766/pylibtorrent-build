@@ -16,23 +16,31 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # --------------------------------------
-    #   최신 ninja 설치 (vcpkg 오류 해결)
-    # --------------------------------------
+    # -------------------------------
+    # Python 3.11 강제 설치 (필수)
+    # -------------------------------
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    # -------------------------------
+    # ninja (필수)
+    # -------------------------------
     - name: Install ninja
       uses: seanmiddleditch/gha-setup-ninja@v4
 
-    # --------------------------------------
-    #   vcpkg 설치
-    # --------------------------------------
+    # -------------------------------
+    # vcpkg 설치
+    # -------------------------------
     - name: Install vcpkg
       run: |
         git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
         C:\vcpkg\bootstrap-vcpkg.bat
 
-    # --------------------------------------
-    #   vcpkg 캐싱
-    # --------------------------------------
+    # -------------------------------
+    # vcpkg 캐시
+    # -------------------------------
     - name: Setup vcpkg cache
       uses: actions/cache@v3
       with:
@@ -41,36 +49,16 @@ jobs:
           C:\vcpkg\archives
         key: vcpkg-${{ runner.os }}-${{ env.TRIPLET }}
 
-    # --------------------------------------
-    #   ghproxy mirror 설정 (정상 방식)
-    # --------------------------------------
-    - name: Configure download mirror
-      shell: pwsh
-      run: |
-        mkdir C:\vcpkg\downloads\config -ErrorAction Ignore
-        @"
-        {
-          "use_git_tree": false,
-          "source": [
-            {
-              "kind": "mirror",
-              "url": "https://ghproxy.com/",
-              "suffix": ""
-            }
-          ]
-        }
-        "@ | Out-File -FilePath C:\vcpkg\downloads\config\global.json -Encoding utf8
-
-    # --------------------------------------
-    #   libtorrent v2.0.9 가져오기
-    # --------------------------------------
+    # -------------------------------
+    # libtorrent 2.0.9 pull
+    # -------------------------------
     - name: Clone libtorrent v2.0.9
       run: |
         git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
-    # --------------------------------------
-    #   vcpkg 의존성 설치
-    # --------------------------------------
+    # -------------------------------
+    # vcpkg dependencies
+    # -------------------------------
     - name: Install dependencies
       shell: pwsh
       run: |
@@ -86,18 +74,16 @@ jobs:
         for ($i = 0; $i -lt 5; $i++) {
           & "$env:VCPKG_ROOT\vcpkg.exe" install $packages --triplet $env:TRIPLET
           if ($LASTEXITCODE -eq 0) { break }
-          Write-Host "vcpkg failed, retry ($i)..."
           Start-Sleep -Seconds 5
         }
 
         if ($LASTEXITCODE -ne 0) {
-          Write-Error "vcpkg failed after 5 attempts"
           exit 1
         }
 
-    # --------------------------------------
-    #   CMake 구성
-    # --------------------------------------
+    # -------------------------------
+    # CMake configure
+    # -------------------------------
     - name: Configure libtorrent
       shell: pwsh
       run: |
@@ -109,7 +95,8 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_SHARED_LIBS=ON `
           -Dbuild_tests=OFF `
-          -Dpython-bindings=ON
+          -Dpython-bindings=ON `
+          -DPython3_EXECUTABLE="$Env:Python3_ROOT_DIR\python.exe"
 
     - name: Build libtorrent
       run: cmake --build build --config Release --parallel
