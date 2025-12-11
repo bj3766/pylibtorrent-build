@@ -51,7 +51,7 @@ jobs:
 
       - name: Clone libtorrent
         run: |
-          git clone --depth 1 --branch RC_2_0 https://github.com/arvidn/libtorrent.git libtorrent-src
+          git clone --branch RC_2_0 https://github.com/arvidn/libtorrent.git libtorrent-src
 
       - name: Configure with CMake
         working-directory: libtorrent-src
