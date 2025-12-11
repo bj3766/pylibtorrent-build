@@ -6,24 +6,34 @@ on:
 env:
   TRIPLET: x64-windows
   VCPKG_ROOT: C:\vcpkg
+  PYTHON_VERSION: "3.11"
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
+
     - name: Checkout repository
       uses: actions/checkout@v4
 
     # ---------------------------
-    #   vcpkg 설치 + 캐시 사용
+    # Python 설치
+    # ---------------------------
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    # ---------------------------
+    # vcpkg 설치
     # ---------------------------
     - name: Install vcpkg
       run: |
         git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
         C:\vcpkg\bootstrap-vcpkg.bat
 
-    - name: Setup vcpkg cache
+    - name: Cache vcpkg
       uses: actions/cache@v3
       with:
         path: |
@@ -32,47 +42,53 @@ jobs:
         key: vcpkg-${{ runner.os }}-${{ env.TRIPLET }}
 
     # ---------------------------
-    #   libtorrent 소스 다운로드 (v2.0.9)
+    # libtorrent 2.0.9 다운로드
     # ---------------------------
-    - name: Clone libtorrent v2.0.9
+    - name: Clone libtorrent (v2.0.9)
       run: |
         git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
     # ---------------------------
-    #   vcpkg 패키지 설치
+    # vcpkg 패키지 설치 (5회 재시도)
     # ---------------------------
-    - name: Install dependencies (Boost, OpenSSL, Zlib, libiconv)
+    - name: Install dependencies
+      shell: powershell
       run: |
-        powershell -Command "
         for ($i=0; $i -lt 5; $i++) {
-          & \"$env:VCPKG_ROOT\\vcpkg.exe\" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
+          & "$env:VCPKG_ROOT\vcpkg.exe" install openssl zlib boost-system boost-filesystem boost-regex libiconv --triplet $env:TRIPLET
           if ($LASTEXITCODE -eq 0) { exit 0 }
           Start-Sleep -Seconds 5
         }
         exit 1
-        "
 
     # ---------------------------
-    #   빌드
+    # libtorrent CMake 설정
     # ---------------------------
     - name: Configure libtorrent
       run: |
         cmake -B build -S libtorrent-src ^
-        -A x64 ^
-        -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-        -DCMAKE_BUILD_TYPE=Release ^
-        -DBUILD_SHARED_LIBS=ON ^
-        -Dbuild_tests=OFF ^
-        -Dpython-bindings=ON
+          -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
+          -DCMAKE_BUILD_TYPE=Release ^
+          -A x64 ^
+          -DBUILD_SHARED_LIBS=OFF
 
     - name: Build libtorrent
       run: cmake --build build --config Release --parallel
 
     # ---------------------------
-    #   결과물 업로드
+    # Python bindings wheel 빌드
     # ---------------------------
-    - name: Upload artifacts
+    - name: Build Python wheel
+      working-directory: libtorrent-src/bindings/python
+      run: |
+        python -m pip install setuptools wheel
+        python setup.py bdist_wheel
+
+    # ---------------------------
+    # 결과물 아티팩트 업로드
+    # ---------------------------
+    - name: Upload wheel artifact
       uses: actions/upload-artifact@v4
       with:
-        name: pylibtorrent-win
-        path: build
+        name: pylibtorrent-wheel
+        path: libtorrent-src/bindings/python/dist/*.whl
