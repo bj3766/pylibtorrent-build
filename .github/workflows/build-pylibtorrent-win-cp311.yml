@@ -2,6 +2,9 @@ name: Build pylibtorrent Windows
 
 on:
   push:
+    paths:
+      - ".github/workflows/build-pylibtorrent-win-cp311.yml"
+      - "*/**"
   workflow_dispatch:
 
 env:
@@ -17,35 +20,10 @@ jobs:
       uses: actions/checkout@v4
 
     # --------------------------------------------------------
-    #   Python 3.11 설치 (libtorrent 2.0.9 가 지원하는 마지막 버전)
-    # --------------------------------------------------------
-    - name: Install Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    # --------------------------------------------------------
-    #   환경 변수 설정
-    # --------------------------------------------------------
-    - name: Configure Python path
-      run: |
-        echo "PYTHON=C:/hostedtoolcache/windows/Python/3.11.*/x64/python.exe" >> $env:GITHUB_ENV
-        echo "PYTHON_INCLUDE=C:/hostedtoolcache/windows/Python/3.11.*/x64/include" >> $env:GITHUB_ENV
-        echo "PYTHON_LIB=C:/hostedtoolcache/windows/Python/3.11.*/x64/libs/python311.lib" >> $env:GITHUB_ENV
-
-    # --------------------------------------------------------
-    #   vcpkg mirror 설정 (Boost 504 오류 방지)
-    # --------------------------------------------------------
-    - name: Configure vcpkg mirrors
-      shell: pwsh
-      run: |
-        echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> $env:GITHUB_ENV
-        echo "VCPKG_DOWNLOADS=https://ghproxy.com/" >> $env:GITHUB_ENV
-
-    # --------------------------------------------------------
     #   vcpkg 설치
     # --------------------------------------------------------
     - name: Install vcpkg
+      shell: pwsh
       run: |
         git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
         C:\vcpkg\bootstrap-vcpkg.bat
@@ -65,43 +43,63 @@ jobs:
     #   libtorrent 2.0.9 다운로드
     # --------------------------------------------------------
     - name: Clone libtorrent v2.0.9
+      shell: pwsh
       run: |
         git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
     # --------------------------------------------------------
-    #   Boost + OpenSSL + zlib + boost-python 설치
-    #   (Python 3.11 강제 사용)
+    #   Python 3.11 + Boost.Python + 기본 의존성 설치
     # --------------------------------------------------------
-    - name: Install vcpkg dependencies
+    - name: Install dependencies via vcpkg
       shell: pwsh
       run: |
-        $packages = "boost-filesystem boost-system boost-regex boost-python openssl zlib libiconv"
+        $packages = @(
+          "python3:x64-windows",
+          "boost-filesystem",
+          "boost-system",
+          "boost-regex",
+          "boost-python",
+          "openssl",
+          "zlib",
+          "libiconv"
+        )
+
         for ($i=0; $i -lt 5; $i++) {
-          & "$env:VCPKG_ROOT\vcpkg.exe" install $packages --triplet $env:TRIPLET --clean-after-build
-          if ($LASTEXITCODE -eq 0) { exit 0 }
+          & "C:\vcpkg\vcpkg.exe" install $packages --triplet $env:TRIPLET
+          if ($LASTEXITCODE -eq 0) { break }
           Write-Host "vcpkg failed, retry ($i)..."
-          Start-Sleep -Seconds 5
+          Start-Sleep -Seconds 3
         }
-        Write-Error "vcpkg install failed after 5 attempts"
-        exit 1
+
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "vcpkg install failed after 5 attempts"
+          exit 1
+        }
 
     # --------------------------------------------------------
-    #   libtorrent 빌드 (Python 3.11 지정)
+    #   CMake 설정
     # --------------------------------------------------------
     - name: Configure libtorrent
+      shell: pwsh
       run: |
+        $PY = "C:/vcpkg/installed/x64-windows/tools/python3/python.exe"
+
         cmake -B build -S libtorrent-src `
           -A x64 `
-          -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake `
+          -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake `
           -DCMAKE_BUILD_TYPE=Release `
+          -DPYTHON_EXECUTABLE="$PY" `
           -DBUILD_SHARED_LIBS=ON `
-          -Dpython-bindings=ON `
-          -DPython3_EXECUTABLE="$env:PYTHON" `
-          -DPython3_INCLUDE_DIR="$env:PYTHON_INCLUDE" `
-          -DPython3_LIBRARY="$env:PYTHON_LIB"
+          -Dbuild_tests=OFF `
+          -Dpython-bindings=ON
 
+    # --------------------------------------------------------
+    #   빌드
+    # --------------------------------------------------------
     - name: Build libtorrent
-      run: cmake --build build --config Release --parallel
+      shell: pwsh
+      run: |
+        cmake --build build --config Release --parallel
 
     # --------------------------------------------------------
     #   아티팩트 업로드
