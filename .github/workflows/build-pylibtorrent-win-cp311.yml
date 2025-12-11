@@ -1,9 +1,6 @@
 name: Build pylibtorrent Windows
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 env:
@@ -36,7 +33,7 @@ jobs:
         C:\vcpkg\bootstrap-vcpkg.bat
 
     # --------------------------------------------------------
-    #   vcpkg 캐시 사용
+    #   vcpkg 캐시
     # --------------------------------------------------------
     - name: Setup vcpkg cache
       uses: actions/cache@v3
@@ -54,19 +51,21 @@ jobs:
         git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
     # --------------------------------------------------------
-    #   vcpkg 의존성 설치 (Boost, OpenSSL, Zlib, libiconv)
+    #   vcpkg 의존성 설치 (Boost, OpenSSL, Zlib 등)
     # --------------------------------------------------------
     - name: Install dependencies (Boost, OpenSSL, Zlib, libiconv)
+      shell: pwsh
       run: |
-        powershell -Command "
+        $script = @'
         for ($i=0; $i -lt 5; $i++) {
-          & \"$env:VCPKG_ROOT\\vcpkg.exe\" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
+          & "$env:VCPKG_ROOT\vcpkg.exe" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
           if ($LASTEXITCODE -eq 0) { exit 0 }
-          Write-Host 'vcpkg failed, retry...'
+          Write-Host "vcpkg failed, retry..."
           Start-Sleep -Seconds 5
         }
         exit 1
-        "
+        '@
+        pwsh -Command $script
 
     # --------------------------------------------------------
     #   libtorrent 빌드
