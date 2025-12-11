@@ -26,7 +26,10 @@ jobs:
 
       - name: Install build tools
         run: |
-          pip install ninja cmake setuptools wheel
+          pip install cmake ninja setuptools wheel
+          echo "Adding ninja to PATH"
+          $ninjaPath = (python -c "import site, os; print(os.path.join(site.getsitepackages()[0], 'ninja'))")
+          echo "$ninjaPath" >> $env:GITHUB_PATH
 
       - name: Clone vcpkg
         run: |
@@ -34,8 +37,7 @@ jobs:
 
       - name: Bootstrap vcpkg
         run: |
-          $path="$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
-          & $path
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
 
       - name: Install dependencies
         run: |
@@ -56,16 +58,18 @@ jobs:
         run: |
           mkdir build
           cd build
+          $toolchain = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+          echo "Toolchain: $toolchain"
           cmake -G "Ninja" `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake `
-            -DVCPKG_TARGET_TRIPLET=$env:TRIPLET `
-            -DBUILD_SHARED_LIBS=OFF `
-            -DBUILD_TESTING=OFF `
-            -DBUILD_EXAMPLES=OFF `
-            -DBUILD_BINDINGS=ON `
-            -DUSE_OPENSSL=ON `
-            -DPYTHON_EXECUTABLE=C:\hostedtoolcache\windows\Python\3.11.*\x64\python.exe `
+            "-DCMAKE_BUILD_TYPE=Release" `
+            "-DCMAKE_TOOLCHAIN_FILE=$toolchain" `
+            "-DVCPKG_TARGET_TRIPLET=$env:TRIPLET" `
+            "-DBUILD_SHARED_LIBS=OFF" `
+            "-DBUILD_TESTING=OFF" `
+            "-DBUILD_EXAMPLES=OFF" `
+            "-DBUILD_BINDINGS=ON" `
+            "-DUSE_OPENSSL=ON" `
+            "-DPYTHON_EXECUTABLE=C:\hostedtoolcache\windows\Python\3.11.*\x64\python.exe" `
             ..
 
       - name: Build libtorrent
