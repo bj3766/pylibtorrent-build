@@ -8,7 +8,7 @@ on:
 jobs:
   build-windows-cp311:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       TRIPLET: x64-windows
@@ -26,7 +26,7 @@ jobs:
 
       - name: Install core build tools
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install cmake ninja setuptools wheel
 
       - name: Install vcpkg
@@ -35,7 +35,7 @@ jobs:
           git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
           "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 
-      - name: Install dependencies with vcpkg
+      - name: Install dependencies with vcpkg (include python binding deps)
         shell: cmd
         run: |
           "%VCPKG_ROOT%\vcpkg.exe" install ^
@@ -45,13 +45,15 @@ jobs:
             openssl ^
             zlib ^
             libiconv ^
+            pybind11 ^
+            boost-python3 ^
             --triplet %TRIPLET%
 
       - name: Clone libtorrent 2.0.10 stable
         run: |
           git clone --branch v2.0.10 https://github.com/arvidn/libtorrent.git libtorrent-src
 
-      - name: Configure CMake
+      - name: Configure CMake (disable try_signal, enable shared libs & bindings)
         working-directory: libtorrent-src
         shell: cmd
         run: |
@@ -62,13 +64,14 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
             -DVCPKG_TARGET_TRIPLET=%TRIPLET% ^
             -DBUILD_SHARED_LIBS=ON ^
-            -Ddeprecated-functions=ON ^
             -Dtry_signal=OFF ^
+            -Ddeprecated-functions=ON ^
             -DBUILD_TESTING=OFF ^
             -DBUILD_EXAMPLES=OFF ^
             -DBUILD_TOOLS=OFF ^
             -DBUILD_BINDINGS=ON ^
             -DUSE_OPENSSL=ON ^
+            -DPYBIND11_PYTHON_VERSION=3.11 ^
             -DPYTHON_EXECUTABLE=%pythonLocation%\python.exe ^
             ..
 
@@ -82,7 +85,7 @@ jobs:
           python -m pip install -r requirements.txt || true
           python setup.py bdist_wheel
 
-      - name: Collect wheel artifact
+      - name: Collect wheel artifacts
         shell: cmd
         run: |
           mkdir artifacts
