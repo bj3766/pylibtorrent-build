@@ -39,9 +39,9 @@ jobs:
         run: |
           & "$env:VCPKG_ROOT/vcpkg.exe" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
 
-      - name: Clone libtorrent source (RC_2_0 안정 브랜치)
+      - name: Clone libtorrent source (v2.0.9)
         run: |
-          git clone --branch RC_2_0 https://github.com/arvidn/libtorrent.git libtorrent-src
+          git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
       - name: Configure CMake
         working-directory: libtorrent-src
