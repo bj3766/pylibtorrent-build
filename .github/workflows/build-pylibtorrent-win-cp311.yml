@@ -38,25 +38,30 @@ jobs:
           Set-ExecutionPolicy Bypass -Scope Process -Force
           & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
 
-      - name: Install dependencies via vcpkg
+      - name: Install dependencies
         shell: powershell
         run: |
-          & "$env:VCPKG_ROOT\vcpkg.exe" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            boost-filesystem `
+            boost-system `
+            boost-regex `
+            openssl `
+            zlib `
+            libiconv --triplet $env:TRIPLET
 
       - name: Clone libtorrent (v2.0.10)
         run: |
           git clone --branch v2.0.10 https://github.com/arvidn/libtorrent.git libtorrent-src
 
-      - name: Configure with CMake
+      - name: Configure CMake
         working-directory: libtorrent-src
         shell: powershell
         run: |
           mkdir build
           cd build
-          $toolchain = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
           cmake -G "Ninja" `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE=$toolchain `
+            -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake `
             -DVCPKG_TARGET_TRIPLET=$env:TRIPLET `
             -DBUILD_SHARED_LIBS=OFF `
             -DBUILD_TESTING=OFF `
@@ -75,12 +80,12 @@ jobs:
         working-directory: libtorrent-src/bindings/python
         run: python setup.py bdist_wheel
 
-      - name: Collect wheel artifact
+      - name: Collect wheel
         run: |
           mkdir artifacts
           for /r %%f in (*.whl) do copy "%%f" artifacts\
 
-      - name: Upload wheel artifact
+      - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
           name: pylibtorrent-wheel
