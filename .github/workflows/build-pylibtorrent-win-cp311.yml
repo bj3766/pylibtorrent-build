@@ -1,6 +1,9 @@
 name: Build pylibtorrent Windows
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
@@ -16,7 +19,7 @@ jobs:
       uses: actions/checkout@v4
 
     # --------------------------------------------------------
-    #   vcpkg mirror 설정 (Boost 504 오류 완전 방지)
+    #   vcpkg mirror 설정 (Boost 504 오류 방지)
     # --------------------------------------------------------
     - name: Configure vcpkg mirror to avoid 504 errors
       shell: pwsh
@@ -33,7 +36,7 @@ jobs:
         C:\vcpkg\bootstrap-vcpkg.bat
 
     # --------------------------------------------------------
-    #   vcpkg 캐시
+    #   vcpkg 캐시 사용
     # --------------------------------------------------------
     - name: Setup vcpkg cache
       uses: actions/cache@v3
@@ -51,7 +54,7 @@ jobs:
         git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
     # --------------------------------------------------------
-    #   vcpkg 의존성 설치 (Boost, OpenSSL, Zlib 등)
+    #   vcpkg 의존성 설치 (Boost, OpenSSL, Zlib, libiconv)
     # --------------------------------------------------------
     - name: Install dependencies (Boost, OpenSSL, Zlib, libiconv)
       run: |
