@@ -1,8 +1,7 @@
-name: Build pylibtorrent Windows (Python 3.11)
+name: Build pylibtorrent Windows
 
 on:
   push:
-    branches: [ main ]
   workflow_dispatch:
 
 env:
@@ -14,89 +13,101 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-    # ---------------------
-    # Ninja 설치
-    # ---------------------
-    - uses: seanmiddleditch/gha-setup-ninja@v4
+    # --------------------------------------------------------
+    #   Python 3.11 설치 (libtorrent 2.0.9 가 지원하는 마지막 버전)
+    # --------------------------------------------------------
+    - name: Install Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
 
-    # ---------------------
-    # vcpkg 설치
-    # ---------------------
+    # --------------------------------------------------------
+    #   환경 변수 설정
+    # --------------------------------------------------------
+    - name: Configure Python path
+      run: |
+        echo "PYTHON=C:/hostedtoolcache/windows/Python/3.11.*/x64/python.exe" >> $env:GITHUB_ENV
+        echo "PYTHON_INCLUDE=C:/hostedtoolcache/windows/Python/3.11.*/x64/include" >> $env:GITHUB_ENV
+        echo "PYTHON_LIB=C:/hostedtoolcache/windows/Python/3.11.*/x64/libs/python311.lib" >> $env:GITHUB_ENV
+
+    # --------------------------------------------------------
+    #   vcpkg mirror 설정 (Boost 504 오류 방지)
+    # --------------------------------------------------------
+    - name: Configure vcpkg mirrors
+      shell: pwsh
+      run: |
+        echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> $env:GITHUB_ENV
+        echo "VCPKG_DOWNLOADS=https://ghproxy.com/" >> $env:GITHUB_ENV
+
+    # --------------------------------------------------------
+    #   vcpkg 설치
+    # --------------------------------------------------------
     - name: Install vcpkg
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+        C:\vcpkg\bootstrap-vcpkg.bat
+
+    # --------------------------------------------------------
+    #   vcpkg 캐시
+    # --------------------------------------------------------
+    - name: Setup vcpkg cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          C:\Users\runneradmin\AppData\Local\vcpkg
+          C:\vcpkg\archives
+        key: vcpkg-${{ runner.os }}-${{ env.TRIPLET }}
+
+    # --------------------------------------------------------
+    #   libtorrent 2.0.9 다운로드
+    # --------------------------------------------------------
+    - name: Clone libtorrent v2.0.9
+      run: |
+        git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
+
+    # --------------------------------------------------------
+    #   Boost + OpenSSL + zlib + boost-python 설치
+    #   (Python 3.11 강제 사용)
+    # --------------------------------------------------------
+    - name: Install vcpkg dependencies
       shell: pwsh
       run: |
-        git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
-        & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
-
-    # ---------------------------
-    # vcpkg 다운로드 프록시 패치
-    # ---------------------------
-    - name: Patch vcpkg download to use ghproxy
-      shell: pwsh
-      run: |
-        $file = "$env:VCPKG_ROOT\scripts\cmake\vcpkg_download_distfile.cmake"
-        (Get-Content $file) `
-          -replace "https://", "https://ghproxy.com/https://" `
-          | Set-Content $file
-
-    # ---------------------------
-    # vcpkg 의존성 설치
-    # ---------------------------
-    - name: Install dependencies (Python 3.11 + Boost + OpenSSL)
-      shell: pwsh
-      run: |
-        $pkgs = @(
-          "python3:x64-windows",
-          "boost-python:x64-windows",
-          "boost-system:x64-windows",
-          "boost-regex:x64-windows",
-          "boost-filesystem:x64-windows",
-          "openssl:x64-windows",
-          "zlib:x64-windows",
-          "libiconv:x64-windows"
-        )
-
+        $packages = "boost-filesystem boost-system boost-regex boost-python openssl zlib libiconv"
         for ($i=0; $i -lt 5; $i++) {
-          & "$env:VCPKG_ROOT\vcpkg.exe" install $pkgs
+          & "$env:VCPKG_ROOT\vcpkg.exe" install $packages --triplet $env:TRIPLET --clean-after-build
           if ($LASTEXITCODE -eq 0) { exit 0 }
-          Write-Host "vcpkg failed; retry $i"
-          Start-Sleep -Seconds 10
+          Write-Host "vcpkg failed, retry ($i)..."
+          Start-Sleep -Seconds 5
         }
-
-        Write-Error "vcpkg failed after 5 attempts"
+        Write-Error "vcpkg install failed after 5 attempts"
         exit 1
 
-    # ---------------------------
-    # libtorrent v2.0.9
-    # ---------------------------
-    - name: Clone libtorrent
-      run: git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
-
-    # ---------------------------
-    # CMake Configure
-    # ---------------------------
+    # --------------------------------------------------------
+    #   libtorrent 빌드 (Python 3.11 지정)
+    # --------------------------------------------------------
     - name: Configure libtorrent
-      shell: pwsh
       run: |
-        $PY = "C:/vcpkg/installed/x64-windows/tools/python3/python.exe"
-
-        cmake `
-          -B build `
-          -S libtorrent-src `
+        cmake -B build -S libtorrent-src `
           -A x64 `
-          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
+          -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake `
           -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_SHARED_LIBS=ON `
-          -Dbuild_tests=OFF `
           -Dpython-bindings=ON `
-          -DPython3_EXECUTABLE="$PY"
+          -DPython3_EXECUTABLE="$env:PYTHON" `
+          -DPython3_INCLUDE_DIR="$env:PYTHON_INCLUDE" `
+          -DPython3_LIBRARY="$env:PYTHON_LIB"
 
     - name: Build libtorrent
       run: cmake --build build --config Release --parallel
 
-    - uses: actions/upload-artifact@v4
+    # --------------------------------------------------------
+    #   아티팩트 업로드
+    # --------------------------------------------------------
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
       with:
         name: pylibtorrent-win
         path: build
