@@ -27,9 +27,6 @@ jobs:
       - name: Install build tools
         run: |
           pip install cmake ninja setuptools wheel
-          echo "Adding ninja to PATH"
-          $ninjaPath = (python -c "import site, os; print(os.path.join(site.getsitepackages()[0], 'ninja'))")
-          echo "$ninjaPath" >> $env:GITHUB_PATH
 
       - name: Clone vcpkg
         run: |
@@ -49,28 +46,26 @@ jobs:
             zlib `
             libiconv --triplet $env:TRIPLET
 
-      - name: Clone libtorrent
+      - name: Clone libtorrent (v2.0.10)
         run: |
           git clone --branch v2.0.10 https://github.com/arvidn/libtorrent.git libtorrent-src
-
 
       - name: Configure with CMake
         working-directory: libtorrent-src
         run: |
           mkdir build
           cd build
-          $toolchain = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
-          echo "Toolchain: $toolchain"
           cmake -G "Ninja" `
-            "-DCMAKE_BUILD_TYPE=Release" `
-            "-DCMAKE_TOOLCHAIN_FILE=$toolchain" `
-            "-DVCPKG_TARGET_TRIPLET=$env:TRIPLET" `
-            "-DBUILD_SHARED_LIBS=OFF" `
-            "-DBUILD_TESTING=OFF" `
-            "-DBUILD_EXAMPLES=OFF" `
-            "-DBUILD_BINDINGS=ON" `
-            "-DUSE_OPENSSL=ON" `
-            "-DPYTHON_EXECUTABLE=C:\hostedtoolcache\windows\Python\3.11.*\x64\python.exe" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=$env:TRIPLET `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DBUILD_TESTING=OFF `
+            -DBUILD_EXAMPLES=OFF `
+            -DBUILD_TOOLS=OFF `
+            -DBUILD_BINDINGS=ON `
+            -DUSE_OPENSSL=ON `
+            -DPYTHON_EXECUTABLE=C:\hostedtoolcache\windows\Python\3.11.*\x64\python.exe `
             ..
 
       - name: Build libtorrent
@@ -79,7 +74,8 @@ jobs:
 
       - name: Build Python wheel
         working-directory: libtorrent-src/bindings/python
-        run: python setup.py bdist_wheel
+        run: |
+          python setup.py bdist_wheel
 
       - name: Collect wheel artifact
         run: |
