@@ -1,15 +1,11 @@
-name: Build pylibtorrent Windows (RC_2_0)
+name: Build pylibtorrent Windows
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 env:
   TRIPLET: x64-windows
   VCPKG_ROOT: C:\vcpkg
-  PYTHON_VERSION: "3.11"
 
 jobs:
   build:
@@ -19,25 +15,26 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # ---------------------------
-    # Setup Python
-    # ---------------------------
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
+    # --------------------------------------------------------
+    #   vcpkg mirror 설정 (Boost 504 오류 완전 방지)
+    # --------------------------------------------------------
+    - name: Configure vcpkg mirror to avoid 504 errors
+      shell: pwsh
+      run: |
+        echo "VCPKG_FORCE_SYSTEM_BINARIES=1" | Out-File -Append $Env:GITHUB_ENV
+        echo "VCPKG_DOWNLOADS=https://ghproxy.com/" | Out-File -Append $Env:GITHUB_ENV
 
-    # ---------------------------
-    # Install vcpkg
-    # ---------------------------
+    # --------------------------------------------------------
+    #   vcpkg 설치
+    # --------------------------------------------------------
     - name: Install vcpkg
       run: |
         git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
         C:\vcpkg\bootstrap-vcpkg.bat
 
-    # ---------------------------
-    # Cache vcpkg
-    # ---------------------------
+    # --------------------------------------------------------
+    #   vcpkg 캐시
+    # --------------------------------------------------------
     - name: Setup vcpkg cache
       uses: actions/cache@v3
       with:
@@ -46,73 +43,49 @@ jobs:
           C:\vcpkg\archives
         key: vcpkg-${{ runner.os }}-${{ env.TRIPLET }}
 
-    # ---------------------------
-    # Clone libtorrent (RC_2_0, Python bindings 포함)
-    # ---------------------------
-    - name: Clone RC_2_0 libtorrent
+    # --------------------------------------------------------
+    #   libtorrent v2.0.9 다운로드
+    # --------------------------------------------------------
+    - name: Clone libtorrent v2.0.9
       run: |
-        git clone --branch RC_2_0 https://github.com/arvidn/libtorrent.git libtorrent-src
+        git clone --branch v2.0.9 https://github.com/arvidn/libtorrent.git libtorrent-src
 
-    # ---------------------------
-    # Install dependencies
-    # ---------------------------
+    # --------------------------------------------------------
+    #   vcpkg 의존성 설치 (Boost, OpenSSL, Zlib 등)
+    # --------------------------------------------------------
     - name: Install dependencies (Boost, OpenSSL, Zlib, libiconv)
-      shell: pwsh
       run: |
-        for ($i = 0; $i -lt 5; $i++) {
-          & "$env:VCPKG_ROOT\vcpkg.exe" install `
-            boost-filesystem boost-system boost-regex `
-            openssl zlib libiconv `
-            --triplet $env:TRIPLET
-
+        powershell -Command "
+        for ($i=0; $i -lt 5; $i++) {
+          & \"$env:VCPKG_ROOT\\vcpkg.exe\" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
           if ($LASTEXITCODE -eq 0) { exit 0 }
-
-          Write-Host "vcpkg failed, retry..."
+          Write-Host 'vcpkg failed, retry...'
           Start-Sleep -Seconds 5
         }
         exit 1
+        "
 
-    # ---------------------------
-    # Configure CMake
-    # ---------------------------
-    - name: Configure libtorrent with Python bindings
+    # --------------------------------------------------------
+    #   libtorrent 빌드
+    # --------------------------------------------------------
+    - name: Configure libtorrent
       run: |
         cmake -B build -S libtorrent-src ^
-          -A x64 ^
-          -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-          -DCMAKE_BUILD_TYPE=Release ^
-          -DBUILD_SHARED_LIBS=ON ^
-          -Dpython-bindings=ON ^
-          -Dbuild_tests=OFF
+        -A x64 ^
+        -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
+        -DCMAKE_BUILD_TYPE=Release ^
+        -DBUILD_SHARED_LIBS=ON ^
+        -Dbuild_tests=OFF ^
+        -Dpython-bindings=ON
 
-    # ---------------------------
-    # Build libtorrent + python bindings
-    # ---------------------------
     - name: Build libtorrent
       run: cmake --build build --config Release --parallel
 
-    # ---------------------------
-    # Build Python wheel
-    # ---------------------------
-    - name: Build Python wheel
-      working-directory: libtorrent-src/bindings/python
-      run: |
-        python -m pip install -r requirements.txt
-        python setup.py bdist_wheel
-
-    # ---------------------------
-    # Collect artifacts
-    # ---------------------------
-    - name: Collect artifacts
-      run: |
-        mkdir artifacts
-        copy build\Release\*.dll artifacts\
-        copy build\Release\*.lib artifacts\
-
-        for /r %%f in (*.whl) do copy "%%f" artifacts\
-
+    # --------------------------------------------------------
+    #   아티팩트 업로드
+    # --------------------------------------------------------
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: pylibtorrent-windows
-        path: artifacts
+        name: pylibtorrent-win
+        path: build
