@@ -24,40 +24,40 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install build tools
+      - name: Install build tools (CMake + Ninja)
         run: |
           pip install cmake ninja setuptools wheel
+          echo "::add-path::$(python -c \"import site; import os; print(os.path.join(site.getsitepackages()[0],'ninja'))\")"
 
       - name: Clone vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
 
-      - name: Bootstrap vcpkg
+      - name: Bootstrap vcpkg (PowerShell)
+        shell: powershell
         run: |
-          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
 
-      - name: Install dependencies
+      - name: Install dependencies via vcpkg
+        shell: powershell
         run: |
-          & "$env:VCPKG_ROOT\vcpkg.exe" install `
-            boost-filesystem `
-            boost-system `
-            boost-regex `
-            openssl `
-            zlib `
-            libiconv --triplet $env:TRIPLET
+          & "$env:VCPKG_ROOT\vcpkg.exe" install boost-filesystem boost-system boost-regex openssl zlib libiconv --triplet $env:TRIPLET
 
       - name: Clone libtorrent (v2.0.10)
         run: |
           git clone --branch v2.0.10 https://github.com/arvidn/libtorrent.git libtorrent-src
 
-      - name: Configure with CMake
+      - name: Configure with CMake (Ninja)
         working-directory: libtorrent-src
+        shell: powershell
         run: |
           mkdir build
           cd build
+          $toolchain = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
           cmake -G "Ninja" `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake `
+            -DCMAKE_TOOLCHAIN_FILE=$toolchain `
             -DVCPKG_TARGET_TRIPLET=$env:TRIPLET `
             -DBUILD_SHARED_LIBS=OFF `
             -DBUILD_TESTING=OFF `
@@ -74,8 +74,7 @@ jobs:
 
       - name: Build Python wheel
         working-directory: libtorrent-src/bindings/python
-        run: |
-          python setup.py bdist_wheel
+        run: python setup.py bdist_wheel
 
       - name: Collect wheel artifact
         run: |
